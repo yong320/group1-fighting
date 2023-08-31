@@ -1,0 +1,126 @@
+# Importing necessary modules
+import requests
+
+# Starting a new session and obtaining necessary session info from the server
+response = requests.post('http://os3-325-52268.vs.sakura.ne.jp/api/trade/start/day2-0/test')
+session_info = response.json()
+session_id = session_info['sessionId']
+current_date = session_info.get('date', '')
+is_complete = session_info['complete']
+
+# Variable definitions
+window_short = 3  # Short-term window size for average calculation
+window_long = 10  # Long-term window size for average calculation
+
+# Template for the request to fetch next data from the server
+request_body_next = {
+  'sessionId': session_id,
+  'exchangeRequests': []
+}
+
+# List of currency codes we're interested in
+currencies = ["USD", "GBP", "EUR", "CAD", "CHF", "SEK", "DKK", "NOK", "AUD", "NZD", "ZAR", "BHD", "HKD", "INR", "PHP", "SGD", "THB", "KWD", "SAR", "AED", "MXN", "IDR", "TWD"]
+
+# Dictionaries to store exchange rates data for short and long windows
+data_set_shot = {}
+data_set_long = {}
+
+# Dictionaries to store computed averages for short and long windows
+average_shot = {}
+average_long = {}
+
+gap = 1  # Variable to track the gap between days
+day = 1  # Variable to track current day
+
+# Arrays to store the previous and current records of target currencies
+record_old = [None] * 4
+record_new = [None] * 4
+
+# Loop until the session is complete
+while not is_complete:
+    # Fetching the next set of data from the server
+    response = requests.post('http://os3-325-52268.vs.sakura.ne.jp/api/trade/next', json=request_body_next)
+    next_info = response.json()
+    currencytobalance = next_info['currencyToBalance']
+    jpybalance = next_info['jpyBalance']
+    print(next_info['currentDate'])  # Display the current date
+    is_complete = next_info['complete']
+
+    # Storing the fetched exchange rates data for short and long windows
+    for currency in currencies:
+        exchange = currency + '/JPY'
+        data_set_shot.setdefault(day, {})[exchange] = next_info['nextDateRates'][exchange]
+        data_set_long.setdefault(day, {})[exchange] = next_info['nextDateRates'][exchange]
+
+    # Calculating short-term average if enough days have passed
+    if gap >= window_short:
+        for currency in currencies:
+            exchange = currency + '/JPY'
+            sum = 0
+            for i in range(window_short):
+                sum += data_set_shot[day - i][exchange]
+            average_shot.setdefault(day, {})[exchange] = sum / window_short
+        del data_set_shot[day - window_short + 1]
+
+    # Calculating long-term average if enough days have passed
+    if gap >= window_long:
+        for currency in currencies:
+            exchange = currency + '/JPY'
+            sum = 0
+            for i in range(window_long):
+                sum += data_set_long[day - i][exchange]
+            average_long.setdefault(day, {})[exchange] = sum / window_long
+        del data_set_long[day - window_long + 1]
+
+    # Calculating the ratio of short-term to long-term averages and sorting them
+    short_long_ratio = {}
+    ratio = 0
+    target = []
+    if gap >= window_long:
+        for currency in currencies:
+            exchange = currency + '/JPY'
+            ratio = average_shot[day][exchange] / average_long[day][exchange]
+            short_long_ratio.setdefault(exchange, ratio)
+
+        sorted_ratio = {k: v for k, v in sorted(short_long_ratio.items(), key=lambda item: item[1], reverse=True)}
+
+        # Picking the top four ratios and their corresponding currencies
+        top_four = list(sorted_ratio.items())[:4]
+        for item in top_four:
+            exchange = item[0]
+            exchange = exchange[:-4]
+            target.append(exchange)
+
+    # Making investments based on the calculated target currencies
+    if gap == window_long:
+        investment = jpybalance / 4
+        for i in range(4):
+            record_old[i] = target[i]
+            new_exchange_request = {
+                'currencyFrom': 'JPY',
+                'currencyTo': target[i],
+                'amount': investment
+            }
+            request_body_next['exchangeRequests'].append(new_exchange_request)
+
+    # Updating investments if the target currencies have changed
+    if gap > window_long:
+        request_body_next['exchangeRequests'] = []
+        for i in range(4):
+            record_new[i] = target[i]
+            if record_new[i] != record_old[i]:
+                new_exchange_request = {
+                    'currencyFrom': record_old[i],
+                    'currencyTo': target[i],
+                    'amount': currencytobalance[record_old[i]]
+                }
+                request_body_next['exchangeRequests'].append(new_exchange_request)
+        for i in range(4):
+            record_old[i] = record_new[i]
+
+    gap += 1
+    day += 1
+
+# Displaying the final balance in JPY
+result = next_info['jpyBalance']
+print(result)
