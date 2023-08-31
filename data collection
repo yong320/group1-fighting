@@ -1,0 +1,49 @@
+import requests
+import json
+from datetime import datetime, timedelta
+
+def fetch_and_save_rates_data_with_weekends_check_updated(start_date, end_date):
+    # Convert strings to datetime objects
+    start_date = datetime.strptime(start_date, '%Y-%m-%d')
+    end_date = datetime.strptime(end_date, '%Y-%m-%d')
+    
+    # Dictionary to store all rate data
+    all_rates_data = {}
+    
+    current_date = start_date
+    while current_date <= end_date:
+        # Check if the current date is Saturday (5) or Sunday (6)
+        if current_date.weekday() in [5, 6]:
+            # Move to the next day and continue the loop
+            current_date += timedelta(days=1)
+            continue
+        
+        # Convert current date back to string format for the API URL
+        date_str = current_date.strftime('%Y-%m-%d')
+        api_url = f'http://os3-325-52268.vs.sakura.ne.jp/api/rate/{date_str}'
+        
+        # Send a GET request to the API
+        response = requests.get(api_url)
+        
+        # Check if the request was successful
+        if response.status_code == 200:
+            # Parse the JSON data and store in the dictionary
+            all_rates_data[date_str] = response.json()
+        else:
+            print(f"Failed to retrieve data for {date_str}.")
+        
+        # Move to the next day
+        current_date += timedelta(days=1)
+    
+    # Save data to a file
+    save_rates_to_file(all_rates_data, 'rates_data.txt')
+    
+    return all_rates_data
+
+def save_rates_to_file(data, filename):
+    with open(filename, 'w') as file:
+        json.dump(data, file, indent=4)
+
+# Fetch data from 2002 to 2017, skipping weekends  rates_data.txt
+rates_data_with_weekends_check_updated = fetch_and_save_rates_data_with_weekends_check_updated('2002-04-01', '2002-12-31')
+print(rates_data_with_weekends_check_updated)  # This line will display the fetched rates data
