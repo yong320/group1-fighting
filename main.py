@@ -1,5 +1,9 @@
 import requests
-response = requests.post('http://os3-325-52268.vs.sakura.ne.jp/api/trade/start/test0/ryotaro')
+
+SCENARIO = "test0"
+USER_ID = "group1"
+
+response = requests.post(f'http://os3-325-52268.vs.sakura.ne.jp/api/trade/start/{SCENARIO}/{USER_ID}')
 session_info = response.json()
 session_id = session_info['sessionId']
 is_complete = session_info['complete']
