@@ -1,0 +1,61 @@
+import requests
+
+def find_best_exchange_pair(next_date_rates, current_balances):
+    """
+    Find the best currency pair to exchange based on next day rates and current balances.
+    """
+    best_profit = 0
+    best_pair = None
+    best_currency_from = None
+
+    for currency_pair, rate in next_date_rates.items():
+        currency_from, currency_to = currency_pair.split('/')
+
+        # If we have the 'currency_from' in our balances
+        if currency_from in current_balances:
+            potential_profit = current_balances[currency_from] * (rate - 1)
+
+            # Check if this currency pair offers better profit than the previous best
+            if potential_profit > best_profit:
+                best_profit = potential_profit
+                best_pair = currency_pair
+                best_currency_from = currency_from
+
+    return best_currency_from, best_pair.split('/')[1], best_profit
+
+def trading_algorithm(session_info):
+    session_id = session_info['sessionId']
+    is_complete = session_info['complete']
+
+    while not is_complete:
+        # Find the best currency pair to exchange for maximizing profit
+        currency_from, currency_to, profit = find_best_exchange_pair(session_info['nextDateRates'], session_info['currencyToBalance'])
+
+        if profit > 0:  # If there's a profitable exchange
+            request_body_next = {
+                'sessionId': session_id,
+                'exchangeRequests': [{
+                    'currencyFrom': currency_from,
+                    'currencyTo': currency_to,
+                    'amount': session_info['currencyToBalance'][currency_from]  # Convert all of 'currency_from' to 'currency_to'
+                }]
+            }
+        else:  # If no profitable exchange found, move to the next day without exchanging
+            request_body_next = {
+                'sessionId': session_id,
+                'exchangeRequests': []
+            }
+
+        response = requests.post('http://os3-325-52268.vs.sakura.ne.jp/api/trade/next', json=request_body_next)
+        session_info = response.json()
+        is_complete = session_info['complete']
+
+    return session_info['jpyBalance']
+
+# Initialize the trading session
+response = requests.post('http://os3-325-52268.vs.sakura.ne.jp/api/trade/start/test0/group1')
+session_info_initial = response.json()
+
+# Start the trading algorithm
+final_balance = trading_algorithm(session_info_initial)
+final_balance
